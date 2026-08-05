@@ -19,3 +19,21 @@ app.get('/health', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`AnchorHook API running on port ${PORT}`);
 });
+
+
+// ─────────────────────────────────────────────
+// NOTES — Milestone 1
+// ─────────────────────────────────────────────
+// The /health route doesn't just return {status: "ok"} directly —
+// it runs `SELECT 1` against Postgres first. This is a deep health
+// check: it confirms the database connection is ALIVE, not just that
+// Express itself is running. A shallow health check would say "ok"
+// even if Postgres were completely down, which defeats the purpose.
+//
+// - Success  → { status: "ok", db: "connected" }
+// - Failure  → caught in the catch block → { status: "error", db: "disconnected" }
+//
+// In production, this route is usually the first thing checked when
+// something breaks — it tells you WHERE the problem is (API itself,
+// vs. API's connection to its database), which changes how you'd fix it.
+

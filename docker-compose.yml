@@ -53,3 +53,29 @@ services:
 
 volumes:
   pgdata:
+
+
+# ─────────────────────────────────────────────
+# NOTES — Milestone 1
+# ─────────────────────────────────────────────
+# This file defines and connects 3 services: postgres, rabbitmq, api.
+# Running `docker compose up` starts all of them together, networked,
+# so `api` can reach `postgres` and `rabbitmq` just by hostname (no IP needed).
+#
+# - depends_on + condition: service_healthy
+#   Without this, Docker only waits for a container to START, not to be
+#   READY. Postgres can "start" before it's actually accepting connections,
+#   which would crash the api on its first query. The healthcheck fixes this.
+#
+# - volumes: pgdata:/var/lib/postgresql/data
+#   Without this, Postgres data lives INSIDE the container and gets wiped
+#   every time the container is removed (docker compose down). This volume
+#   stores the data outside the container so it survives restarts.
+#
+# - volumes: ./api:/app
+#   Without this, code changes wouldn't show up inside the running
+#   container until a full rebuild. This live-mounts local code into the
+#   container so edits reflect immediately.
+#
+# - ports: "5672" (AMQP, used by our app) vs "15672" (RabbitMQ's web
+#   management UI — useful later for visually watching queues/DLQ).
