@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS endpoints (
+  id SERIAL PRIMARY KEY,
+  url TEXT NOT NULL,
+  secret TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
