@@ -1,6 +1,14 @@
 const express = require('express');
 const pool = require('./db');
 const endpointsRouter = require('./routes/endpoints');
+const eventsRouter = require('./routes/events');
+
+// ─────────────────────────────────────────────
+// NOTES — Milestone 3 (update)
+// ─────────────────────────────────────────────
+// Added: app.use('/events', eventsRouter)
+// Same modular pattern as /endpoints — the actual publish-to-queue
+// logic lives in routes/events.js, this file just mounts it.
 
 const app = express();
 app.use(express.json());
@@ -17,17 +25,8 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/endpoints', endpointsRouter);
+app.use('/events', eventsRouter);
 
 app.listen(PORT, () => {
   console.log(`AnchorHook API running on port ${PORT}`);
 });
-
-
-// ─────────────────────────────────────────────
-// NOTES — Milestone 2 (update)
-// ─────────────────────────────────────────────
-// Added: app.use('/endpoints', endpointsRouter)
-//
-// This "mounts" the router defined in routes/endpoints.js under the
-// /endpoints path — same modular routing pattern as Express apps in
-// MERN (keeping route logic out of the main server file as the app grows).
