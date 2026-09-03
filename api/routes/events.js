@@ -4,28 +4,20 @@ const { getChannel, QUEUE_NAME } = require('../queue');
 const router = express.Router();
 
 // ─────────────────────────────────────────────
-// NOTES — Milestone 3
+// NOTES — Milestone 4 (update)
 // ─────────────────────────────────────────────
-// POST /events — this is the PRODUCER. It does NOT deliver the webhook
-// itself. It just publishes the event onto RabbitMQ and responds
-// immediately (202 Accepted = "received, will process later").
-//
-// This is the core shift from a normal MERN route: instead of doing the
-// slow work (an outbound HTTP call to some other server) inline and
-// making the client wait, we hand it off to a queue. A separate worker
-// (built in Milestone 4) will pick it up and actually deliver it,
-// independent of this request's lifecycle.
-//
-// sendToQueue() takes a Buffer, not a plain object — RabbitMQ deals in
-// raw bytes, so we JSON.stringify() the event first.
+// Added endpointId — the worker needs to know WHICH registered
+// endpoint this event should be delivered to. Without this, the
+// worker would have no way to look up the URL + secret to use.
 router.post('/', async (req, res) => {
-  const { type, data } = req.body;
+  const { endpointId, type, data } = req.body;
 
-  if (!type || !data) {
-    return res.status(400).json({ error: 'type and data are required' });
+  if (!endpointId || !type || !data) {
+    return res.status(400).json({ error: 'endpointId, type, and data are required' });
   }
 
   const event = {
+    endpointId,
     type,
     data,
     createdAt: new Date().toISOString(),
@@ -35,7 +27,6 @@ router.post('/', async (req, res) => {
     const channel = await getChannel();
     channel.sendToQueue(QUEUE_NAME, Buffer.from(JSON.stringify(event)));
 
-    // 202 Accepted: request understood, work queued, not yet complete.
     res.status(202).json({ status: 'queued', event });
   } catch (err) {
     res.status(500).json({ error: 'failed to queue event', details: err.message });
@@ -43,3 +34,4 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
+

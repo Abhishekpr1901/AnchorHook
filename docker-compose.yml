@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,7 +8,7 @@ services:
       POSTGRES_PASSWORD: anchorhook
       POSTGRES_DB: anchorhook
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -51,8 +49,39 @@ services:
       - ./api:/app
       - /app/node_modules
 
+  worker:
+    build: ./api
+    container_name: anchorhook-worker
+    restart: unless-stopped
+    command: node worker.js
+    environment:
+      DATABASE_URL: postgres://anchorhook:anchorhook@postgres:5432/anchorhook
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./api:/app
+      - /app/node_modules
+
+  mock-receiver:
+    build: ./mock-receiver
+    container_name: anchorhook-mock-receiver
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      WEBHOOK_SECRET: "d1414ccc7556e411ff1a276baa1906a8fd5cade7eff6fca83e6e1d02f96018d9"
+    volumes:
+      - ./mock-receiver:/app
+      - /app/node_modules
+
 volumes:
   pgdata:
+
+
 
 
 # ─────────────────────────────────────────────
@@ -60,7 +89,7 @@ volumes:
 # ─────────────────────────────────────────────
 # This file defines and connects 3 services: postgres, rabbitmq, api.
 # Running `docker compose up` starts all of them together, networked,
-# so `api` can reach `postgres` and `rabbitmq` just by hostname (no IP needed).
+# so `api` can reach `postgres` and `rbbitmq` just by hostname (no IP needed).
 #
 # - depends_on + condition: service_healthy
 #   Without this, Docker only waits for a container to START, not to be
