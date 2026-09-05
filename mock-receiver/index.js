@@ -4,24 +4,27 @@ const crypto = require('crypto');
 const app = express();
 app.use(express.json());
 
-// ─────────────────────────────────────────────
-// NOTES — Milestone 4
-// ─────────────────────────────────────────────
-// This simulates "the customer's server" — it receives webhooks and
-// verifies the HMAC signature, exactly like a real receiver would.
-// The secret here MUST match the secret generated when the endpoint
-// was registered via POST /endpoints — that's how both sides "agree"
-// on the shared secret.
+const SECRET = process.env.WEBHOOK_SECRET;
 
-const SECRET = process.env.WEBHOOK_SECRET; // we'll pass this in manually for testing
+// ─────────────────────────────────────────────
+// NOTES — Milestone 5
+// ─────────────────────────────────────────────
+// FORCE_FAIL lets us simulate a broken receiver on demand, so we can
+// actually test retry/backoff behavior instead of always succeeding.
+// In a real system, this would just be an actual outage — we're
+// deliberately triggering the same condition to observe the retry logic.
+const FORCE_FAIL = process.env.FORCE_FAIL === 'true';
 
 app.post('/webhook', (req, res) => {
-  const receivedSignature = req.headers['x-anchorhook-signature'];
-  const payloadString = JSON.stringify(req.body);
+  if (FORCE_FAIL) {
+    console.log('💥 Simulating failure (FORCE_FAIL is on)');
+    return res.status(500).json({ error: 'simulated failure' });
+  }
 
+  const receivedSignature = req.headers['x-anchorhook-signature'];
   const expectedSignature = crypto
     .createHmac('sha256', SECRET)
-    .update(payloadString)
+    .update(JSON.stringify(req.body))
     .digest('hex');
 
   if (receivedSignature === expectedSignature) {

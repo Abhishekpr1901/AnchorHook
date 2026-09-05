@@ -4,17 +4,32 @@ const axios = require('axios');
 const pool = require('./db');
 
 // ─────────────────────────────────────────────
-// NOTES — Milestone 4
+// NOTES — Milestone 6
 // ─────────────────────────────────────────────
-// Standalone consumer — no Express, no HTTP server, no port. Just an
-// infinite loop: connect → wait for a message → process it → repeat.
+// Every delivery attempt now gets logged to Postgres — success, failure,
+// or final DLQ outcome — via logAttempt(). This is what makes delivery
+// history queryable later, instead of only existing in docker logs.
 
 const QUEUE_NAME = 'events_queue';
+const RETRY_QUEUE_NAME = 'events_retry_queue';
+const DLQ_NAME = 'events_dlq';
+const MAX_RETRIES = 5;
 
 async function startWorker() {
   const connection = await amqp.connect(process.env.RABBITMQ_URL);
   const channel = await connection.createChannel();
+
   await channel.assertQueue(QUEUE_NAME, { durable: true });
+
+  await channel.assertQueue(RETRY_QUEUE_NAME, {
+    durable: true,
+    arguments: {
+      'x-dead-letter-exchange': '',
+      'x-dead-letter-routing-key': QUEUE_NAME,
+    },
+  });
+
+  await channel.assertQueue(DLQ_NAME, { durable: true });
 
   console.log('Worker started, waiting for events...');
 
@@ -22,25 +37,48 @@ async function startWorker() {
     if (!msg) return;
 
     const event = JSON.parse(msg.content.toString());
-    console.log('Received event:', event);
+    const retryCount = msg.properties.headers['x-retry-count'] || 0;
+    const attemptNumber = retryCount + 1;
+
+    console.log(`Received event (attempt ${attemptNumber}):`, event);
 
     try {
-      await deliverEvent(event);
+      const statusCode = await deliverEvent(event);
       console.log('✅ Delivered successfully');
+      await logAttempt(event, 'success', statusCode, null, attemptNumber);
+      channel.ack(msg);
     } catch (err) {
       console.log('❌ Delivery failed:', err.message);
-      // Retry logic comes in Milestone 5 — for now, we just log and move on.
+      const statusCode = err.response ? err.response.status : null;
+      await logAttempt(event, 'failed', statusCode, err.message, attemptNumber);
+      await handleFailure(channel, msg, event, retryCount);
     }
-
-    // Always ack, even on failure — otherwise RabbitMQ would redeliver
-    // this same message forever, in an infinite loop. Milestone 5's
-    // retry/DLQ system will handle failures properly.
-    channel.ack(msg);
   });
 }
 
+async function handleFailure(channel, msg, event, retryCount) {
+  if (retryCount >= MAX_RETRIES) {
+    console.log(`🪦 Max retries reached, sending to DLQ`);
+    channel.sendToQueue(DLQ_NAME, Buffer.from(JSON.stringify(event)), {
+      persistent: true,
+    });
+    channel.ack(msg);
+    return;
+  }
+
+  const delayMs = 5000 * Math.pow(2, retryCount);
+  console.log(`🔁 Retrying in ${delayMs}ms (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
+
+  channel.sendToQueue(RETRY_QUEUE_NAME, Buffer.from(JSON.stringify(event)), {
+    persistent: true,
+    expiration: delayMs.toString(),
+    headers: { 'x-retry-count': retryCount + 1 },
+  });
+
+  channel.ack(msg);
+}
+
 async function deliverEvent(event) {
-  // 1. Look up the endpoint's URL + secret from Postgres.
   const result = await pool.query(
     'SELECT url, secret FROM endpoints WHERE id = $1',
     [event.endpointId]
@@ -52,9 +90,8 @@ async function deliverEvent(event) {
 
   const { url, secret } = result.rows[0];
 
-  // 2. Build the actual payload we'll send to the receiver.
   const payload = {
-    id: crypto.randomUUID(), // unique event ID — enables idempotency on the receiver's side
+    id: crypto.randomUUID(),
     type: event.type,
     data: event.data,
     createdAt: event.createdAt,
@@ -62,20 +99,31 @@ async function deliverEvent(event) {
 
   const payloadString = JSON.stringify(payload);
 
-  // 3. Sign the payload using HMAC-SHA256 + the endpoint's secret.
   const signature = crypto
     .createHmac('sha256', secret)
     .update(payloadString)
     .digest('hex');
 
-  // 4. Actually deliver it — POST to the client's registered URL.
-  await axios.post(url, payload, {
+  const response = await axios.post(url, payload, {
     headers: {
       'Content-Type': 'application/json',
       'X-AnchorHook-Signature': signature,
     },
-    timeout: 5000, // don't wait forever if the receiver is unresponsive
+    timeout: 5000,
   });
+
+  return response.status;
+}
+
+// Writes one row per delivery attempt — this is the entire observability
+// piece. Every attempt, success or failure, becomes a permanent record.
+async function logAttempt(event, status, statusCode, errorMessage, attemptNumber) {
+  await pool.query(
+    `INSERT INTO delivery_attempts
+      (endpoint_id, event_type, status, status_code, error_message, attempt_number)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [event.endpointId, event.type, status, statusCode, errorMessage, attemptNumber]
+  );
 }
 
 startWorker();

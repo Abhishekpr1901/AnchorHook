@@ -4,6 +4,19 @@ CREATE TABLE IF NOT EXISTS endpoints (
   secret TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS delivery_attempts (
+  id SERIAL PRIMARY KEY,
+  endpoint_id INTEGER REFERENCES endpoints(id),
+  event_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  status_code INTEGER,
+  error_message TEXT,
+  attempt_number INTEGER NOT NULL,
+  attempted_at TIMESTAMP DEFAULT NOW()
+);
+
+
 -- ─────────────────────────────────────────────
 -- NOTES — Milestone 2
 -- ─────────────────────────────────────────────
