@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS delivery_attempts (
   attempted_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS circuit_state TEXT NOT NULL DEFAULT 'closed';
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS consecutive_failures INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS circuit_opened_at TIMESTAMP;
+
+
+
 
 -- ─────────────────────────────────────────────
 -- NOTES — Milestone 2
