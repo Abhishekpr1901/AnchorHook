@@ -4,15 +4,20 @@ const crypto = require('crypto');
 const app = express();
 app.use(express.json());
 
-const SECRET = process.env.WEBHOOK_SECRET;
+// ─────────────────────────────────────────────
+// NOTES — Milestone 9
+// ─────────────────────────────────────────────
+// End-to-end idempotency: we track every event ID we've already
+// processed. If the same ID arrives again (e.g. because the worker
+// retried after losing our response, even though we DID process it
+// the first time), we skip re-processing but still return success —
+// from the sender's point of view, this event is handled either way.
+//
+// This is an in-memory Set — resets on container restart. A real
+// system would use Redis or a database so this survives restarts.
+const seenEventIds = new Set();
 
-// ─────────────────────────────────────────────
-// NOTES — Milestone 5
-// ─────────────────────────────────────────────
-// FORCE_FAIL lets us simulate a broken receiver on demand, so we can
-// actually test retry/backoff behavior instead of always succeeding.
-// In a real system, this would just be an actual outage — we're
-// deliberately triggering the same condition to observe the retry logic.
+const SECRET = process.env.WEBHOOK_SECRET;
 const FORCE_FAIL = process.env.FORCE_FAIL === 'true';
 
 app.post('/webhook', (req, res) => {
@@ -27,13 +32,21 @@ app.post('/webhook', (req, res) => {
     .update(JSON.stringify(req.body))
     .digest('hex');
 
-  if (receivedSignature === expectedSignature) {
-    console.log('✅ Signature verified! Payload:', req.body);
-    res.status(200).json({ received: true });
-  } else {
+  if (receivedSignature !== expectedSignature) {
     console.log('❌ Signature mismatch — rejecting');
-    res.status(401).json({ error: 'invalid signature' });
+    return res.status(401).json({ error: 'invalid signature' });
   }
+
+  const eventId = req.body.id;
+
+  if (seenEventIds.has(eventId)) {
+    console.log(`🔁 Duplicate event ${eventId} — already processed, skipping`);
+    return res.status(200).json({ received: true, duplicate: true });
+  }
+
+  seenEventIds.add(eventId);
+  console.log('✅ Signature verified! New event processed:', req.body);
+  res.status(200).json({ received: true, duplicate: false });
 });
 
 app.listen(4000, () => {
