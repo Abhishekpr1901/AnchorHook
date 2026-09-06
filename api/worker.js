@@ -1,31 +1,32 @@
-const amqp = require('amqplib');
+
+  const amqp = require('amqplib');
 const crypto = require('crypto');
 const axios = require('axios');
 const pool = require('./db');
 
 // ─────────────────────────────────────────────
-// NOTES — Milestone 7
+// NOTES — Milestone 8
 // ─────────────────────────────────────────────
-// Circuit breaker: if an endpoint fails too many times in a row, we stop
-// even attempting deliveries to it for a cooldown period. This protects
-// worker time/retry-queue churn from being wasted on an endpoint we
-// already know is broken.
+// Token bucket rate limiting: each endpoint has a bucket of tokens.
+// Every delivery attempt spends 1 token. Tokens refill over time, up to
+// a max capacity. If an endpoint has 0 tokens available, we hold off
+// on delivering to it — even if the circuit is closed and nothing else
+// is wrong — to avoid overwhelming that specific receiver.
 //
-// States: 'closed' (normal) -> 'open' (stop trying) -> 'half_open'
-// (cooldown passed, test with exactly one attempt) -> back to 'closed'
-// on success, or 'open' again on failure.
-//
-// Important: a skipped delivery (circuit open) is NOT a real attempt —
-// it gets re-queued (without incrementing retry count) so the circuit
-// eventually gets a chance to test recovery once the cooldown passes.
+// This is calculated lazily: rather than running a background timer
+// that refills tokens constantly, we calculate "how many tokens SHOULD
+// have refilled since last_refill_at" at the moment we actually check,
+// based on elapsed time. This avoids needing any separate scheduler.
 
 const QUEUE_NAME = 'events_queue';
 const RETRY_QUEUE_NAME = 'events_retry_queue';
 const DLQ_NAME = 'events_dlq';
 const MAX_RETRIES = 5;
 
-const FAILURE_THRESHOLD = 3;   // consecutive failures before opening the circuit
-const COOLDOWN_MS = 30000;     // how long to stay open before testing recovery
+const FAILURE_THRESHOLD = 3;
+const COOLDOWN_MS = 30000;
+
+const RATE_LIMIT_DELAY_MS = 3000; // how long to wait before re-checking when throttled
 
 async function startWorker() {
   const connection = await amqp.connect(process.env.RABBITMQ_URL);
@@ -54,29 +55,31 @@ async function startWorker() {
 
     console.log(`Received event (attempt ${attemptNumber}):`, event);
 
-    // ── Circuit breaker check — before attempting anything ──
-    const endpoint = await getEndpointCircuitState(event.endpointId);
+    // ── Circuit breaker check ──
+    const endpoint = await getEndpointState(event.endpointId);
     const circuitCheck = evaluateCircuit(endpoint);
 
     if (circuitCheck.skip) {
       console.log(`⛔ Circuit OPEN for endpoint ${event.endpointId}, skipping delivery`);
       await logAttempt(event, 'skipped', null, 'circuit breaker open', attemptNumber);
-
-      // Re-queue for a later retry so we eventually get a chance to test
-      // recovery once the cooldown passes — otherwise this message just
-      // disappears and the circuit never gets tested again.
-      channel.sendToQueue(RETRY_QUEUE_NAME, Buffer.from(JSON.stringify(event)), {
-        persistent: true,
-        expiration: COOLDOWN_MS.toString(),
-        headers: { 'x-retry-count': retryCount }, // not incremented — not a real attempt
-      });
-
+      requeueForLater(channel, event, retryCount, COOLDOWN_MS);
       channel.ack(msg);
       return;
     }
 
     if (circuitCheck.isHalfOpenTest) {
       console.log(`🧪 Circuit HALF_OPEN for endpoint ${event.endpointId}, testing recovery`);
+    }
+
+    // ── Rate limit check — only if circuit allowed us this far ──
+    const hasToken = await tryConsumeToken(event.endpointId);
+
+    if (!hasToken) {
+      console.log(`🐢 Rate limit reached for endpoint ${event.endpointId}, delaying delivery`);
+      await logAttempt(event, 'skipped', null, 'rate limit exceeded', attemptNumber);
+      requeueForLater(channel, event, retryCount, RATE_LIMIT_DELAY_MS);
+      channel.ack(msg);
+      return;
     }
 
     try {
@@ -95,17 +98,26 @@ async function startWorker() {
   });
 }
 
-// Fetches the endpoint's current circuit breaker fields.
-async function getEndpointCircuitState(endpointId) {
+// Re-queues an event without counting it as a real delivery attempt
+// (used by both the circuit breaker skip and the rate limit hold-back).
+function requeueForLater(channel, event, retryCount, delayMs) {
+  channel.sendToQueue(RETRY_QUEUE_NAME, Buffer.from(JSON.stringify(event)), {
+    persistent: true,
+    expiration: delayMs.toString(),
+    headers: { 'x-retry-count': retryCount }, // not incremented — not a real attempt
+  });
+}
+
+async function getEndpointState(endpointId) {
   const result = await pool.query(
-    'SELECT circuit_state, consecutive_failures, circuit_opened_at FROM endpoints WHERE id = $1',
+    `SELECT circuit_state, consecutive_failures, circuit_opened_at,
+            available_tokens, max_tokens, refill_rate_ms, last_refill_at
+     FROM endpoints WHERE id = $1`,
     [endpointId]
   );
   return result.rows[0];
 }
 
-// Decides what to do based on current circuit state.
-// Returns { skip: bool, isHalfOpenTest: bool }
 function evaluateCircuit(endpoint) {
   if (!endpoint || endpoint.circuit_state === 'closed') {
     return { skip: false, isHalfOpenTest: false };
@@ -116,20 +128,52 @@ function evaluateCircuit(endpoint) {
     const now = Date.now();
 
     if (now - openedAt >= COOLDOWN_MS) {
-      // Cooldown has passed — allow exactly one test attempt (half-open).
       return { skip: false, isHalfOpenTest: true };
     }
 
-    // Still cooling down — skip this delivery entirely.
     return { skip: true, isHalfOpenTest: false };
   }
 
-  // half_open state shouldn't normally persist between messages in this
-  // simple version — treat it like open, waiting for the next cooldown check.
   return { skip: false, isHalfOpenTest: true };
 }
 
-// On success: reset failure count, close the circuit.
+// The core token bucket logic. Calculates how many tokens should have
+// refilled since last_refill_at, applies that (capped at max_tokens),
+// then tries to spend 1 token. Returns true if a token was available
+// and spent, false if the bucket was empty.
+async function tryConsumeToken(endpointId) {
+  const endpoint = await getEndpointState(endpointId);
+
+  const now = Date.now();
+  const lastRefill = new Date(endpoint.last_refill_at).getTime();
+  const elapsedMs = now - lastRefill;
+
+  const tokensToAdd = Math.floor(elapsedMs / endpoint.refill_rate_ms);
+  const newTokenCount = Math.min(endpoint.max_tokens, endpoint.available_tokens + tokensToAdd);
+
+  if (newTokenCount < 1) {
+    // Still no tokens available even after calculating refill — persist
+    // the refill progress so we don't lose partial elapsed time, but
+    // don't spend anything.
+    await pool.query(
+      'UPDATE endpoints SET available_tokens = $1, last_refill_at = $2 WHERE id = $3',
+      [newTokenCount, new Date(lastRefill + tokensToAdd * endpoint.refill_rate_ms), endpointId]
+    );
+    return false;
+  }
+
+  // Spend one token, and advance last_refill_at by exactly how much
+  // time we accounted for — not simply "now" — so we don't accidentally
+  // throw away fractional progress toward the next token.
+  const refillAdvanceMs = tokensToAdd * endpoint.refill_rate_ms;
+  await pool.query(
+    'UPDATE endpoints SET available_tokens = $1, last_refill_at = $2 WHERE id = $3',
+    [newTokenCount - 1, new Date(lastRefill + refillAdvanceMs), endpointId]
+  );
+
+  return true;
+}
+
 async function recordSuccess(endpointId) {
   await pool.query(
     `UPDATE endpoints
@@ -139,7 +183,6 @@ async function recordSuccess(endpointId) {
   );
 }
 
-// On failure: increment failure count, open the circuit if threshold crossed.
 async function recordFailure(endpointId) {
   const result = await pool.query(
     'UPDATE endpoints SET consecutive_failures = consecutive_failures + 1 WHERE id = $1 RETURNING consecutive_failures, circuit_state',
