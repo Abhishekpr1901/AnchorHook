@@ -1,14 +1,9 @@
 const express = require('express');
+const crypto = require('crypto');
 const { getChannel, QUEUE_NAME } = require('../queue');
 
 const router = express.Router();
 
-// ─────────────────────────────────────────────
-// NOTES — Milestone 4 (update)
-// ─────────────────────────────────────────────
-// Added endpointId — the worker needs to know WHICH registered
-// endpoint this event should be delivered to. Without this, the
-// worker would have no way to look up the URL + secret to use.
 router.post('/', async (req, res) => {
   const { endpointId, type, data } = req.body;
 
@@ -16,7 +11,12 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'endpointId, type, and data are required' });
   }
 
+  const eventId = crypto.randomUUID();
+  const correlationId = crypto.randomUUID();
+
   const event = {
+    eventId,
+    correlationId,
     endpointId,
     type,
     data,
@@ -27,8 +27,25 @@ router.post('/', async (req, res) => {
     const channel = await getChannel();
     channel.sendToQueue(QUEUE_NAME, Buffer.from(JSON.stringify(event)));
 
-    res.status(202).json({ status: 'queued', event });
+    console.log(JSON.stringify({
+      level: 'info',
+      service: 'api',
+      msg: 'event queued',
+      correlationId,
+      eventId,
+      endpointId,
+      type,
+    }));
+
+    res.status(202).json({ status: 'queued', eventId, correlationId, event });
   } catch (err) {
+    console.log(JSON.stringify({
+      level: 'error',
+      service: 'api',
+      msg: 'failed to queue event',
+      correlationId,
+      error: err.message,
+    }));
     res.status(500).json({ error: 'failed to queue event', details: err.message });
   }
 });

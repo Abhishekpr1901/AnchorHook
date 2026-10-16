@@ -25,6 +25,10 @@ ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS max_tokens INTEGER NOT NULL DEFAU
 ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS refill_rate_ms INTEGER NOT NULL DEFAULT 2000;
 ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS last_refill_at TIMESTAMP DEFAULT NOW();
 
+ALTER TABLE delivery_attempts ADD COLUMN IF NOT EXISTS correlation_id TEXT;
+ALTER TABLE delivery_attempts ADD COLUMN IF NOT EXISTS event_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_attempts_correlation ON delivery_attempts (correlation_id);
+
 
 
 
