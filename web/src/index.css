@@ -1,0 +1,67 @@
+/* Design tokens: the ONLY colors, sizes and spacing the UI may use. */
+:root {
+  --bg: #0c0f12;
+  --surface: #12171c;
+  --surface-2: #181e25;
+  --border: #242c35;
+  --text: #e6eaee;
+  --text-dim: #93a0ad;
+  --accent: #36c5a8;
+
+  --ok: #4cc38a;
+  --warn: #e5a93d;
+  --bad: #ef6b6b;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 16px;
+  --s-4: 24px;
+  --s-5: 40px;
+  --s-6: 64px;
+
+  --fs-sm: 13px;
+  --fs-base: 15px;
+  --fs-lg: 20px;
+  --fs-xl: 32px;
+
+  --radius: 6px;
+
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; line-height: 1.2; font-weight: 600; }
+p { margin: 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+
+.container { max-width: 1080px; margin: 0 auto; padding: 0 var(--s-4); }
+
+/* Status chip: text only, color carries the meaning. */
+.chip {
+  display: inline-block;
+  padding: 1px var(--s-2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.chip.ok { color: var(--ok); }
+.chip.warn { color: var(--warn); }
+.chip.bad { color: var(--bad); }
+

@@ -4,6 +4,7 @@ const endpointsRouter = require('./routes/endpoints');
 const eventsRouter = require('./routes/events');
 const statsRouter = require('./routes/stats');
 const traceRouter = require('./routes/trace');
+const dlqRouter = require('./routes/dlq');
 
 
 
@@ -44,6 +45,8 @@ app.use('/endpoints', endpointsRouter);
 app.use('/events', eventsRouter);
 app.use('/stats', statsRouter);
 app.use('/trace', traceRouter);
+app.use('/dlq', dlqRouter);
+
 
 
 
