@@ -29,12 +29,52 @@ router.post('/', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// NOTES — Milestone 6
+// NOTES — Milestone 11
 // ─────────────────────────────────────────────
+// GET /endpoints — the dashboard's endpoint table. Each row has the
+// endpoint's health (circuit state, token bucket) plus how many deliveries
+// succeeded, failed or were skipped. The secret is deliberately NOT
+// selected: it is shown once at creation and never again.
+//
+// The LEFT JOIN uses a subquery that counts attempts per endpoint in one
+// pass. COUNT(*) FILTER (WHERE ...) counts only the rows matching a
+// condition, so we get three counts from a single scan of the table.
+router.get('/', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+
+  try {
+    const result = await pool.query(
+      `SELECT e.id, e.url, e.created_at, e.circuit_state, e.consecutive_failures,
+              e.available_tokens, e.max_tokens, e.refill_rate_ms,
+              COALESCE(a.delivered, 0) AS delivered,
+              COALESCE(a.failed, 0) AS failed,
+              COALESCE(a.skipped, 0) AS skipped,
+              a.last_attempt_at
+       FROM endpoints e
+       LEFT JOIN (
+         SELECT endpoint_id,
+                COUNT(*) FILTER (WHERE status = 'success')::int AS delivered,
+                COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+                COUNT(*) FILTER (WHERE status = 'skipped')::int AS skipped,
+                MAX(attempted_at) AS last_attempt_at
+         FROM delivery_attempts
+         GROUP BY endpoint_id
+       ) a ON a.endpoint_id = e.id
+       ORDER BY e.id DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    res.json({ count: result.rows.length, endpoints: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'failed to list endpoints', details: err.message });
+  }
+});
+
 // GET /endpoints/:id/deliveries — returns delivery history for one
 // endpoint, most recent first. Supports basic pagination via ?limit
-// and ?offset query params, so large histories don't get dumped all
-// at once.
+// and ?offset query params.
 router.get('/:id/deliveries', async (req, res) => {
   const { id } = req.params;
   const limit = parseInt(req.query.limit) || 20;
