@@ -1,26 +1,32 @@
 import { useEffect, useState } from 'react'
-import { api, isDemo } from './api.js'
+import Nav from './components/Nav.jsx'
+import Landing from './pages/landing.jsx'
 
-// Temporary check: shows that the data layer works in both modes.
+// Minimal hash router: "#/dashboard" shows the dashboard, anything else the landing page.
+function currentRoute() {
+  return window.location.hash.startsWith('#/dashboard') ? 'dashboard' : 'landing'
+}
+
 export default function App() {
-  const [data, setData] = useState(null)
-  const [error, setError] = useState(null)
+  const [route, setRoute] = useState(currentRoute)
 
   useEffect(() => {
-    Promise.all([api.getStats(), api.getEndpoints(), api.getDlq()])
-      .then(([stats, endpoints, dlq]) => setData({ stats, endpoints: endpoints.endpoints, dlq }))
-      .catch((err) => setError(err.message))
+    const onChange = () => setRoute(currentRoute())
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
   }, [])
 
   return (
-    <main className="container" style={{ paddingTop: 'var(--s-5)' }}>
-      <h1 style={{ fontSize: 'var(--fs-lg)' }}>
-        AnchorHooks <span className={`chip ${isDemo ? 'warn' : 'ok'}`}>{isDemo ? 'demo data' : 'live API'}</span>
-      </h1>
-      {error && <p style={{ color: 'var(--bad)', marginTop: 'var(--s-3)' }}>Could not load: {error}</p>}
-      {!data && !error && <p style={{ color: 'var(--text-dim)', marginTop: 'var(--s-3)' }}>Loading...</p>}
-      {data && <pre className="mono" style={{ marginTop: 'var(--s-3)' }}>{JSON.stringify(data, null, 2)}</pre>}
-    </main>
+    <>
+      <Nav route={route} />
+      {route === 'landing' ? (
+        <Landing />
+      ) : (
+        <main className="container" style={{ paddingTop: 'var(--s-5)' }}>
+          <p className="dim">The dashboard is built in Step 5.</p>
+        </main>
+      )}
+    </>
   )
 }
 

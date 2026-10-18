@@ -23,6 +23,9 @@
   --fs-base: 15px;
   --fs-lg: 20px;
   --fs-xl: 32px;
+  --fs-hero: clamp(32px, 5vw, 48px);
+
+  
 
   --radius: 6px;
 
