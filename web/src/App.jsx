@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Nav from './components/Nav.jsx'
-import Landing from './pages/landing.jsx'
+import Landing from './pages/Landing.jsx'
 
 // Minimal hash router: "#/dashboard" shows the dashboard, anything else the landing page.
 function currentRoute() {
@@ -29,4 +29,3 @@ export default function App() {
     </>
   )
 }
-

@@ -2,6 +2,8 @@ import './landing.css'
 import './sections.css'
 import Problem from './sections/Problem.jsx'
 import HowItWorks from './sections/HowItWorks.jsx'
+import Features from './sections/Features.jsx'
+import Status from './sections/Status.jsx'
 
 const GITHUB = 'https://github.com/Abhishekpr1901/AnchorHook'
 
@@ -56,7 +58,8 @@ export default function Landing() {
 
       <Problem />
       <HowItWorks />
+      <Features />
+      <Status />
     </main>
   )
 }
-
