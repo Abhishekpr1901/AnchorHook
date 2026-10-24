@@ -1,5 +1,6 @@
 import './landing.css'
 import './sections.css'
+import './info.css'
 import Problem from './sections/Problem.jsx'
 import HowItWorks from './sections/HowItWorks.jsx'
 import Features from './sections/Features.jsx'
@@ -63,3 +64,4 @@ export default function Landing() {
     </main>
   )
 }
+

@@ -1,0 +1,44 @@
+/* Features and Status sections. */
+.features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-4) var(--s-5);
+  margin-top: var(--s-4);
+}
+.feature { padding-top: var(--s-3); border-top: 1px solid var(--border); }
+.feature h3 { font-size: var(--fs-base); }
+.feature p { margin-top: var(--s-1); color: var(--text-dim); font-size: var(--fs-sm); }
+
+.snippet-title { margin-top: var(--s-5); color: var(--text-dim); font-weight: 400; }
+.snippet { margin-top: var(--s-2); }
+
+.status-intro { max-width: 60ch; margin-top: var(--s-3); color: var(--text-dim); }
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-5);
+  margin-top: var(--s-4);
+}
+.status-grid h3 { color: var(--text-dim); font-size: var(--fs-sm); font-weight: 400; }
+.status-list { margin: var(--s-2) 0 0; padding: 0; list-style: none; }
+.status-list li {
+  position: relative;
+  padding: var(--s-2) 0 var(--s-2) var(--s-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.status-list li::before {
+  content: '\2013';
+  position: absolute;
+  left: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+.status-list.works li::before { content: '+'; color: var(--ok); }
+
+@media (max-width: 720px) {
+  .features, .status-grid { grid-template-columns: 1fr; }
+  /* Long curl lines wrap on a phone instead of scrolling sideways. */
+  .snippet { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
+

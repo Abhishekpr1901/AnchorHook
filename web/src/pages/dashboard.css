@@ -1,0 +1,89 @@
+.dash { padding-top: var(--s-5); padding-bottom: var(--s-6); }
+
+/* Tabs: a row under the header on desktop. */
+.tabs {
+  display: flex;
+  gap: var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.tabs a {
+  margin-bottom: -1px;
+  padding: var(--s-2) 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+.tabs a:hover { color: var(--text); text-decoration: none; }
+.tabs a[aria-current='page'] { color: var(--text); border-bottom-color: var(--accent); }
+
+.view { margin-top: var(--s-4); }
+.view-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
+.view-head h1 { font-size: var(--fs-lg); }
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: var(--s-3) 0 0;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+}
+.figure {
+  padding: var(--s-3);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.figure dt { color: var(--text-dim); font-size: var(--fs-sm); }
+.figure dd {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.figure dd.ok { color: var(--ok); }
+.figure dd.warn { color: var(--warn); }
+.figure dd.bad { color: var(--bad); }
+
+.queues { margin-top: var(--s-3); }
+.demo-note {
+  margin-top: var(--s-4);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.state { padding: var(--s-4) 0; }
+.state.error { color: var(--bad); }
+.state button { margin-top: var(--s-2); cursor: pointer; font: inherit; background: none; }
+
+/* Phone: tabs become a fixed bottom bar, figures go to two columns. */
+@media (max-width: 720px) {
+  .tabs {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    gap: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tabs a {
+    flex: 1;
+    margin: 0;
+    padding: var(--s-3) 0;
+    border-top: 2px solid transparent;
+    border-bottom: 0;
+    text-align: center;
+  }
+  .tabs a[aria-current='page'] { border-top-color: var(--accent); }
+  .view { margin-top: 0; }
+  .figures { grid-template-columns: repeat(2, 1fr); }
+  /* Keep the footer clear of the bottom bar. */
+  body:has(.tabs) .footer { padding-bottom: 72px; }
+}
+

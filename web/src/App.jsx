@@ -1,31 +1,34 @@
 import { useEffect, useState } from 'react'
 import Nav from './components/Nav.jsx'
+import Footer from './components/Footer.jsx'
 import Landing from './pages/Landing.jsx'
+import Dashboard from './pages/Dashboard.jsx'
 
-// Minimal hash router: "#/dashboard" shows the dashboard, anything else the landing page.
-function currentRoute() {
-  return window.location.hash.startsWith('#/dashboard') ? 'dashboard' : 'landing'
+// Minimal hash router.
+//   #/dashboard            -> dashboard, overview tab
+//   #/dashboard/endpoints  -> dashboard, endpoints tab
+//   anything else          -> landing page
+function parseRoute() {
+  const hash = window.location.hash
+  if (!hash.startsWith('#/dashboard')) return { route: 'landing', tab: null }
+  return { route: 'dashboard', tab: hash.split('/')[2] || 'overview' }
 }
 
 export default function App() {
-  const [route, setRoute] = useState(currentRoute)
+  const [location, setLocation] = useState(parseRoute)
 
   useEffect(() => {
-    const onChange = () => setRoute(currentRoute())
+    const onChange = () => setLocation(parseRoute())
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
 
   return (
     <>
-      <Nav route={route} />
-      {route === 'landing' ? (
-        <Landing />
-      ) : (
-        <main className="container" style={{ paddingTop: 'var(--s-5)' }}>
-          <p className="dim">The dashboard is built in Step 5.</p>
-        </main>
-      )}
+      <Nav route={location.route} />
+      {location.route === 'landing' ? <Landing /> : <Dashboard tab={location.tab} />}
+      <Footer />
     </>
   )
 }
+
